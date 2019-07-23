@@ -48,18 +48,22 @@ class Player(Entity):
 		self.movement_sprites = movement_sprites
 		self.movement_animation_index = 0
 		self.move_speed = 3
-		self.jump_speed = 10
+		self.jump_speed = 1000
 		self.walk_acceleration = 1
-
+		self.jump_interval = 120
+		self.jump_cooldown = 0
 	def move(self, direction):
 		if direction == DIRECTION_LEFT:
-			self.vx = - self.move_speed
+			self.vx += - self.move_speed
 			self.movement_animation_index += 1
 		elif direction == DIRECTION_RIGHT:
-			self.vx = self.move_speed
+			self.vx += self.move_speed
 			self.movement_animation_index += 1
 		elif direction == DIRECTION_UP:
-			self.vx = self.jump_speed
+			if self.jump_cooldown == 0:
+				print("Jump!")
+				self.jump_cooldown = self.jump_interval
+				self.vy += -self.jump_speed
 		if self.movement_animation_index > 14:
 			self.movement_animation_index = 0
 
@@ -75,9 +79,10 @@ class World():
 	def physical_engine(self):
 		# Gravity
 		if self.player.vy < 50:
-			self.player.ay = 0.2
+			self.player.ay = 2.5
 		else:
 			self.player.ay = 0
+
 		self.player.vx += self.player.ax
 		self.player.vy += self.player.ay
 		self.player.x += self.player.vx
@@ -89,6 +94,7 @@ class World():
 		self.player.x = round(self.player.x, 1)
 		self.player.y = round(self.player.y, 1)
 		print("( ",self.player.x,",",self.player.y,")")
+		self.player.vx = 0
 
 	def render_frame(self):
 		self.camera_x = self.player.x - GAME_FRAME_WIDTH / 2
@@ -103,16 +109,19 @@ class World():
 			for event in pygame.event.get():
 				if event.type == pygame.QUIT:
 					self.game_running = False
-				if event.type == pygame.KEYDOWN:
-					key_dict = pygame.key.get_pressed()
-					if key_dict[pygame.K_ESCAPE]:
-						self.game_running = False
-					if key_dict[pygame.K_SPACE]:
-						self.player.move(DIRECTION_UP)
+
+			key_dict = pygame.key.get_pressed()
+			if key_dict[pygame.K_ESCAPE]:
+				self.game_running = False
+			if key_dict[pygame.K_SPACE]:
+				self.player.move(DIRECTION_UP)
+
 			if button.is_held(RIGHT):
 				self.player.move(DIRECTION_RIGHT)
 			if button.is_held(LEFT):
 				self.player.move(DIRECTION_LEFT)
+			if self.player.jump_cooldown > 0:
+				self.player.jump_cooldown -= 1
 			self.physical_engine()
 			self.render_frame()
 			self.clock.tick(FRAMES_PER_SECOND)
