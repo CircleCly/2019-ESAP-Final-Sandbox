@@ -6,56 +6,117 @@ from retrogamelib import clock
 from retrogamelib import font
 from retrogamelib import dialog
 from retrogamelib import util
+from retrogamelib import camera
 from retrogamelib.constants import *
+
+#Game Constant
+DIRECTION_UP = 0
+DIRECTION_RIGHT = 1
+DIRECTION_DOWN = 2
+DIRECTION_LEFT = 3
+PLAYER_INIT_X = 800
+PLAYER_INIT_Y = 800
+FRAMES_PER_SECOND = 60
+GAME_FRAME_WIDTH = 1024
+GAME_FRAME_HEIGHT = 768
+
+# Initialize the game
 screen = pygame.display.set_mode((1024,768))
-pygame.display.set_caption('first demo')
-clock = pygame.time.Clock()
-protagonist_x = 300
-protagonist_y = 300
-walk_animation_index = 0
+pygame.display.set_caption('Sandbox!')
+
+#Game Resources
 protagonist_walk_sprites = []
 for i in range(1,6):
 	protagonist_walk_sprites.append(pygame.image.load('protagonist_walk_'+str(i)+'.png'))
-class World(pygame.sprite.Sprite):
-	def __init__(self,clock):
-		self.clock=clock
-	def player(self,protagonist_x,protagonist_y,walk_animation_index,protagonist_walk_sprites):
-		if button.is_held(UP):
-			protagonist_y -= 10
-			walk_animation_index +=1
-		if button.is_held(RIGHT):
-			protagonist_x += 10
-			walk_animation_index +=1
-		if button.is_held(DOWN):
-			protagonist_y += 10
-			walk_animation_index +=1
-		if button.is_held(LEFT):
-			protagonist_x -= 10
-			walk_animation_index += 1
-		if walk_animation_index > 4:
-			walk_animation_index = 0
-		screen.blit(protagonist_walk_sprites[walk_animation_index], (protagonist_x, protagonist_y))
-		L=[protagonist_x,protagonist_y,walk_animation_index]
-		return L
-world=World(clock)
-running = True
-while running:
-    clock.tick(10)
-    screen.fill((200, 200, 200))
-    # bilt - block image transform.
-    # Take car pixels and put them centered at (250, 250)
-    # This is drawing to a buffer that is not displayed to the user
-    # Let us display the buffer to the user
-    button.handle_input()
-    L=world.player(protagonist_x,protagonist_y,walk_animation_index,protagonist_walk_sprites)
-    protagonist_x=L[0]
-    protagonist_y=L[1]
-    walk_animation_index=L[2]
-    pygame.display.flip()
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.KEYDOWN:
-            key_dict = pygame.key.get_pressed()
-            if key_dict[pygame.K_ESCAPE]:
-                running = False
+background = pygame.image.load('background.png')
+
+
+class Entity(pygame.sprite.Sprite):
+	def __init__(self, x, y, vx, vy, ax, ay, sprite):
+		self.x = x
+		self.y = y
+		self.vx = vx
+		self.vy = vy
+		self.ax = ax
+		self.ay = ay
+		self.sprite = sprite
+
+
+class Player(Entity):
+	def __init__(self, x, y, vx, vy, ax, ay, movement_sprites):
+		Entity.__init__(self, x, y, vx, vy, ax, ay, movement_sprites[0])
+		self.movement_sprites = movement_sprites
+		self.movement_animation_index = 0
+		self.move_speed = 3
+		self.jump_speed = 10
+		self.walk_acceleration = 1
+
+	def move(self, direction):
+		if direction == DIRECTION_LEFT:
+			self.vx = - self.move_speed
+			self.movement_animation_index += 1
+		elif direction == DIRECTION_RIGHT:
+			self.vx = self.move_speed
+			self.movement_animation_index += 1
+		elif direction == DIRECTION_UP:
+			self.vx = self.jump_speed
+		if self.movement_animation_index > 14:
+			self.movement_animation_index = 0
+
+
+class World():
+	def __init__(self):
+		self.clock = pygame.time.Clock()
+		self.player = Player(PLAYER_INIT_X, PLAYER_INIT_Y, 0, 0, 0, 0, movement_sprites=protagonist_walk_sprites)
+		self.game_running = True
+		self.camera_x = self.player.x - GAME_FRAME_WIDTH / 2
+		self.camera_y = self.player.y - GAME_FRAME_HEIGHT / 2
+
+	def physical_engine(self):
+		# Gravity
+		if self.player.vy < 50:
+			self.player.ay = 0.2
+		else:
+			self.player.ay = 0
+		self.player.vx += self.player.ax
+		self.player.vy += self.player.ay
+		self.player.x += self.player.vx
+		self.player.y += self.player.vy
+		self.player.ax = round(self.player.ax, 1)
+		self.player.ay = round(self.player.ay, 1)
+		self.player.vx = round(self.player.vx, 1)
+		self.player.vy = round(self.player.vy, 1)
+		self.player.x = round(self.player.x, 1)
+		self.player.y = round(self.player.y, 1)
+		print("( ",self.player.x,",",self.player.y,")")
+
+	def render_frame(self):
+		self.camera_x = self.player.x - GAME_FRAME_WIDTH / 2
+		self.camera_y = self.player.y - GAME_FRAME_HEIGHT / 2
+		screen.blit(background,(0,0))
+		screen.blit(self.player.movement_sprites[self.player.movement_animation_index // 3],(GAME_FRAME_WIDTH / 2, GAME_FRAME_HEIGHT / 2))
+		pygame.display.flip()
+
+	def main_loop(self):
+		while self.game_running:
+			button.handle_input()
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT:
+					self.game_running = False
+				if event.type == pygame.KEYDOWN:
+					key_dict = pygame.key.get_pressed()
+					if key_dict[pygame.K_ESCAPE]:
+						self.game_running = False
+					if key_dict[pygame.K_SPACE]:
+						self.player.move(DIRECTION_UP)
+			if button.is_held(RIGHT):
+				self.player.move(DIRECTION_RIGHT)
+			if button.is_held(LEFT):
+				self.player.move(DIRECTION_LEFT)
+			self.physical_engine()
+			self.render_frame()
+			self.clock.tick(FRAMES_PER_SECOND)
+
+world = World()
+world.main_loop()
+
