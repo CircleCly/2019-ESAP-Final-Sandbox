@@ -9,4 +9,5 @@ class Block(pygame.sprite.Sprite):
         self.sprite = sprite
         self.block_type = block_type
         self.hitbox = pygame.rect.Rect((x, y), (self.width, self.height))
+        self.can_pass_through = False
 

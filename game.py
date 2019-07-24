@@ -16,17 +16,23 @@ GAME_FRAME_HEIGHT = 600
 # Initialize the game
 screen = pygame.display.set_mode((GAME_FRAME_WIDTH,GAME_FRAME_HEIGHT))
 pygame.display.set_caption('Sandbox!')
+map_file = open("map.mp","r")
 
 #Game Resources
 protagonist_walk_sprites = []
 for i in range(1,6):
 	protagonist_walk_sprites.append(pygame.image.load('protagonist_walk_'+str(i)+'.png'))
 background = pygame.image.load('background.png')
-dirt_block = pygame.image.load('dirt_block.png')
-
+block_sprites = []
+for i in range(0,12):
+	block_sprites.append(pygame.image.load("block_"+str(i)+".png"))
+skeleton_sprites = []
+for i in range(1,5):
+	skeleton_sprites.append(pygame.image.load('skeleton'+str(i)+".png"))
+selected_block = pygame.image.load('selected_block.png')
 
 class Entity(pygame.sprite.Sprite):
-	def __init__(self, x, y, vx, vy, ax, ay, sprite):
+	def __init__(self, x, y, vx, vy, ax, ay, width, height, sprite):
 		self.x = x
 		self.y = y
 		self.vx = vx
@@ -34,20 +40,20 @@ class Entity(pygame.sprite.Sprite):
 		self.ax = ax
 		self.ay = ay
 		self.sprite = sprite
-
+		self.width = width
+		self.height = height
+		self.hitbox = pygame.rect.Rect((x, y), (self.width, self.height))
 
 class Player(Entity):
 	def __init__(self, x, y, vx, vy, ax, ay, movement_sprites):
-		Entity.__init__(self, x, y, vx, vy, ax, ay, movement_sprites[0])
+		Entity.__init__(self, x, y, vx, vy, ax, ay, 56, 94, movement_sprites[0])
 		self.movement_sprites = movement_sprites
 		self.movement_animation_index = 0
-		self.move_speed = 3
+		self.move_speed = 5
 		self.jump_speed = 17
-		self.walk_acceleration = 1
 		self.can_jump = True
 		self.width = 56
 		self.height = 94
-		self.hitbox = pygame.rect.Rect((x, y), (self.width, self.height))
 
 	def move(self, direction):
 		if direction == DIRECTION_LEFT:
@@ -64,6 +70,7 @@ class Player(Entity):
 			self.vx = 0
 		if self.movement_animation_index > 19:
 			self.movement_animation_index = 0
+		self.sprite = self.movement_sprites[self.movement_animation_index // 4]
 
 class World():
 	def __init__(self):
@@ -72,10 +79,22 @@ class World():
 		self.game_running = True
 		self.camera_x = self.player.x - GAME_FRAME_WIDTH / 2
 		self.camera_y = self.player.y - GAME_FRAME_HEIGHT / 2
-		self.blocks = []
-		for i in range(0, 9):
-			for j in range(0, 1000):
-				self.blocks.append(Block(self.player.x - 5000 + j * 20, self.player.y + 600 + i * 20, dirt_block, "dirt_block"))
+		self.map = []
+		for row in range(0, 300):
+			line = map_file.readline()
+			line = line.split(" ")
+			line = [int(x) for x in line if x != "\n"]
+			current_row = []
+			for col in range(0, len(line)):
+				current_block = line[col]
+				current_x = col * 20
+				current_y = row * 20
+				block = Block(current_x, current_y, block_sprites[line[col]], line[col])
+				if line[col] == 0 or line[col] == 2:
+					block.can_pass_through = True
+				current_row.append(block)
+			self.map.append(current_row)
+		self.current_chunk = []
 
 	def physical_engine(self):
 		# Gravity
@@ -89,11 +108,12 @@ class World():
 		future_hitbox_y = pygame.rect.Rect((self.player.x, self.player.y + self.player.vy), (self.player.width, self.player.height))
 		will_collide_x = False
 		will_collide_y = False
-		for block in self.blocks:
-			if future_hitbox_x.colliderect(block.hitbox):
-				will_collide_x = True
-			if future_hitbox_y.colliderect(block.hitbox):
-				will_collide_y = True
+		for row in self.current_chunk:
+			for block in row:
+				if future_hitbox_x.colliderect(block.hitbox) and not block.can_pass_through:
+					will_collide_x = True
+				if future_hitbox_y.colliderect(block.hitbox) and not block.can_pass_through:
+					will_collide_y = True
 		self.player.can_jump = will_collide_y
 		if not will_collide_x:
 			self.player.x += self.player.vx
@@ -101,18 +121,29 @@ class World():
 			self.player.y += self.player.vy
 		self.player.hitbox = pygame.rect.Rect((self.player.x, self.player.y), (self.player.width, self.player.height))
 
+	def update_current_chunk(self):
+		self.current_chunk = []
+		for r in range(max(0, int(self.camera_y // 20)), min(300, int(self.camera_y // 20 + 40))):
+			current_row = []
+			for c in range(max(0, int(self.camera_x // 20)), min(2000, int(self.camera_x // 20 + 50))):
+				current_row.append(self.map[r][c])
+			self.current_chunk.append(current_row)
+
 	def render_frame(self):
 		self.camera_x = self.player.x + self.player.width // 2 - GAME_FRAME_WIDTH // 2
 		self.camera_y = self.player.y + self.player.height // 2 - GAME_FRAME_HEIGHT // 2
 		screen.blit(background,(0, 0))
-		current_movement_frame = self.player.movement_sprites[self.player.movement_animation_index // 4]
+		current_movement_frame = self.player.sprite
 		screen.blit(current_movement_frame, (GAME_FRAME_WIDTH // 2 - self.player.width // 2, GAME_FRAME_HEIGHT // 2 - self.player.height // 2))
-		for block in self.blocks:
+		for row in self.current_chunk:
 			# If block is in camera range
-			if self.camera_x - block.width <= block.x <= self.camera_x + GAME_FRAME_WIDTH \
-				and self.camera_y - block.height <= block.y <= self.camera_y + GAME_FRAME_HEIGHT:
-				screen.blit(block.sprite, (block.x - self.camera_x, block.y - self.camera_y, block.width, block.height))
+			for block in row:
+				if self.camera_x - block.width <= block.x <= self.camera_x + GAME_FRAME_WIDTH \
+					and self.camera_y - block.height <= block.y <= self.camera_y + GAME_FRAME_HEIGHT:
+					screen.blit(block.sprite, (block.x - self.camera_x, block.y - self.camera_y, block.width, block.height))
 		pygame.display.flip()
+
+
 
 	def main_loop(self):
 		while self.game_running:
@@ -131,6 +162,7 @@ class World():
 			if not key_dict[pygame.K_d] and not key_dict[pygame.K_a]:
 				self.player.move(NO_DIRECTION_X)
 			self.physical_engine()
+			self.update_current_chunk()
 			self.render_frame()
 			self.clock.tick(FRAMES_PER_SECOND)
 
