@@ -59,7 +59,7 @@ class Player(Entity):
 		key_dict=pygame.key.get_pressed()
 		if direction == DIRECTION_LEFT:
 			if key_dict[pygame.K_LSHIFT]:
-				self.vx  - 2*self.move_speed
+				self.vx = - 2*self.move_speed
 			else:
 				self.vx = - self.move_speed
 			self.movement_animation_index += 1
