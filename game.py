@@ -115,7 +115,7 @@ class World():
 					 + (pygame.mouse.get_pos()[1] + self.camera_y - self.player.get_center_y()) ** 2) > 120:
 			self.chosen_block = None
 			return
-		chosen_block_position_x = max(0, min(299, (pygame.mouse.get_pos()[0] + self.camera_x) // 20))
+		chosen_block_position_x = max(0, min(1999, (pygame.mouse.get_pos()[0] + self.camera_x) // 20))
 		chosen_block_position_y = max(0, min(299, (pygame.mouse.get_pos()[1] + self.camera_y) // 20))
 		self.chosen_block = self.map[int(chosen_block_position_y)][int(chosen_block_position_x)]
 		if self.chosen_block.block_type == 0:
@@ -275,40 +275,65 @@ class World():
 			self.chosen_block.sprite = block_sprites[0]
 			self.chosen_block.can_pass_through = True
 
+	def message_display(self, text1, text2):
+		pygame.init()
+		font = pygame.font.SysFont("comicsansms", 70)
+		text1 = font.render(text1, True, (100, 0, 0))
+		font1 = pygame.font.SysFont("comicsansms", 35)
+		text2 = font1.render(text2, True, (100, 0, 0))
+		screen.fill((255, 255, 255))
+		screen.blit(text1,(GAME_FRAME_WIDTH//2-120 , 100))
+		screen.blit(text2,(GAME_FRAME_WIDTH//2-300 , 400))
+
 	def main_loop(self):
+		in_Game = False
 		while self.game_running:
-			for event in pygame.event.get():
-				if event.type == pygame.QUIT:
-					self.game_running = False
-			if not self.player_died:
-				if self.player.hp <= 0:
-					self.player_died = True
+			if in_Game==True:
+				for event in pygame.event.get():
+					if event.type == pygame.QUIT:
+						self.game_running = False
+				if not self.player_died:
+					if self.player.hp <= 0:
+						self.player_died = True
+						in_Game=False
+					key_dict = pygame.key.get_pressed()
+					if key_dict[pygame.K_ESCAPE]:
+						self.game_running = False
+					if key_dict[pygame.K_SPACE]:
+						self.player.move(DIRECTION_UP)
+					if key_dict[pygame.K_d]:
+						self.player.move(DIRECTION_RIGHT)
+					if key_dict[pygame.K_a]:
+						self.player.move(DIRECTION_LEFT)
+					if not key_dict[pygame.K_d] and not key_dict[pygame.K_a]:
+						self.player.move(NO_DIRECTION_X)
+					if self.player.invincibility_frame > 0:
+						self.player.invincibility_frame -= 1
+					self.update_chosen_block()
+					self.spawn_monster()
+					self.despawn_monster()
+					self.iterate_entities()
+					self.physical_engine()
+					if pygame.mouse.get_pressed() == (1, 0, 0) or pygame.mouse.get_pressed() == (1, 0, 1) or \
+						pygame.mouse.get_pressed() == (1, 1, 0) or pygame.mouse.get_pressed() == (1, 1, 1):
+						self.destroy_blocks()
+					self.update_current_chunk()
+					self.render_frame()
+					self.clock.tick(FRAMES_PER_SECOND)
+			if in_Game==False:
+				self.message_display("Survive", "Press space to play.  Press ESC to quit.")
+				for event in pygame.event.get():
+					if event.type == pygame.QUIT:
+						self.game_running = False
 				key_dict = pygame.key.get_pressed()
 				if key_dict[pygame.K_ESCAPE]:
 					self.game_running = False
 				if key_dict[pygame.K_SPACE]:
-					self.player.move(DIRECTION_UP)
-				if key_dict[pygame.K_d]:
-					self.player.move(DIRECTION_RIGHT)
-				if key_dict[pygame.K_a]:
-					self.player.move(DIRECTION_LEFT)
-				if not key_dict[pygame.K_d] and not key_dict[pygame.K_a]:
-					self.player.move(NO_DIRECTION_X)
-				if self.player.invincibility_frame > 0:
-					self.player.invincibility_frame -= 1
-				self.update_chosen_block()
-				self.spawn_monster()
-				self.despawn_monster()
-				self.iterate_entities()
-				self.physical_engine()
-				if pygame.mouse.get_pressed() == (1, 0, 0) or pygame.mouse.get_pressed() == (1, 0, 1) or \
-					pygame.mouse.get_pressed() == (1, 1, 0) or pygame.mouse.get_pressed() == (1, 1, 1):
-					self.destroy_blocks()
-				self.update_current_chunk()
-				self.render_frame()
-				self.clock.tick(FRAMES_PER_SECOND)
-
-
+					in_Game=True
+					self.player_died=False
+					self.player.hp=100
+					self.entities.clear()
+					self.monster_count=0
+				pygame.display.flip()
 world = World()
 world.main_loop()
-
