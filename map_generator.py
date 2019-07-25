@@ -22,10 +22,45 @@ for i in range(0, 300):
 for i in range(0, 2000):
     if random.random() < 0.2:
         map[150][i] = 1
+        map[149][i] = 2
 # Generate -the fixed dirt layer
 for i in range(0, 4):
     for j in range(0, 2000):
         map[151 + i][j] = 1
+        if map[150][j]!=1:
+            map[150][j]=2
+def house(n,map):
+    for i in range (n,n+10):
+        for j in range (141,151):
+            map[j][i] = 4
+    for k in range (136,141):
+        y=k-136
+        for x in range (n+5-y,n+5+y):
+            map[k][x] = 4
+    map[145][n+2]=11
+    map[145][n+7]=11
+    return map
+def tree(n,map):
+    for i in range (141,145):
+        for k in range (n-3,n+4):
+            map[i][k]=5
+    for j in range (145,151):
+        map[j][n]=3
+    return map
+ls=[]
+for i in range(1,5):
+    x=random.randint(1,1900)
+    if x not in ls:
+        map=house(x,map)
+    for a in range (0,10):
+        ls.append(x+a)
+ls1=[]
+for i in range(1,50):
+    x=random.randint(1,1900)
+    if x not in ls1:
+        map=tree(x,map)
+    for a in range (0,10):
+        ls1.append(x+a) 
 # Generate the rock layer
 for i in range(0, 145):
     for j in range(0, 2000):
@@ -46,6 +81,3 @@ with open("map.mp","w") as f:
         for j in range(0, 2000):
             f.write(str(map[i][j])+" ")
         f.write("\n")
-
-
-
