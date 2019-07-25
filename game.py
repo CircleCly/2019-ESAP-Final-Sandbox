@@ -20,6 +20,9 @@ pygame.display.set_caption('Sandbox!')
 map_file = open("map.mp","r")
 
 #Game Resources
+pygame.init()
+writing_font = pygame.font.SysFont("Comic Sans MS", 15)
+
 protagonist_walk_sprites = []
 for i in range(1,6):
 	protagonist_walk_sprites.append(pygame.image.load('protagonist_walk_'+str(i)+'.png'))
@@ -33,7 +36,142 @@ for i in range(1,5):
 skeleton_sprites.append(pygame.image.load('skeleton_attack_left.png'))
 skeleton_sprites.append(pygame.image.load('skeleton_attack_right.png'))
 selected_block = pygame.image.load('selected_block.png')
+wooden_sword_sprites = []
+wooden_sword_sprites.append(pygame.image.load('wooden_sword_right.png'))
+wooden_sword_sprites.append(pygame.image.load('wooden_sword_left.png'))
+wooden_pickaxe_sprites = []
+wooden_pickaxe_sprites.append(pygame.image.load('wooden_pickaxe_right.png'))
+wooden_pickaxe_sprites.append(pygame.image.load('wooden_pickaxe_left.png'))
+inventory_slot = pygame.image.load('inventory_slot.png')
+highlighted_inventory_slot = pygame.image.load('highlighted_inventory_slot.png')
 
+class Item():
+	def __init__(self, sprite, name, width, height, owner):
+		self.number = 1
+		self.name = name
+		self.sprite = sprite
+		self.use_frames = 15
+		self.width = width
+		self.height = height
+		self.owner = owner
+
+class ItemEntity(Entity):
+	def __init__(self, x, y, width, height, sprite, item):
+		self.item = item
+		Entity.__init__(self, x, y, 0, 0, 0, 0, width, height, sprite)
+
+class SwordItem(Item):
+	def __init__(self, sprites, name, width, height, owner, attack_times):
+		Item.__init__(self, sprites[0], name, width, height, owner)
+		self.number = 1
+		self.damage = 3
+		self.width = width
+		self.use_frames = 15
+		self.height = height
+		self.owner = owner
+		self.sprites = sprites
+		self.attack_times = attack_times
+	def attack(self, attack_direction):
+		sword_entity = SwordEntity(self, self.owner, attack_direction)
+		sword_entity.affected_by_gravity = False
+		world.entities.append(sword_entity)
+
+class SwordEntity(ItemEntity):
+	def __init__(self, sword, attacker, attack_direction):
+		self.attacker = attacker
+		if attack_direction == DIRECTION_LEFT:
+			ItemEntity.__init__(self, attacker.x + 3 - sword.width, attacker.y + 45, \
+							sword.width, sword.height, sword.sprites[1], sword)
+			self.direction = DIRECTION_LEFT
+			self.lasting_time = sword.use_frames
+		elif attack_direction == DIRECTION_RIGHT:
+			ItemEntity.__init__(self, attacker.x + attacker.width, attacker.y + 45, \
+							sword.width, sword.height, sword.sprites[0], sword)
+			self.direction = DIRECTION_RIGHT
+			self.lasting_time = sword.use_frames
+		self.sword = sword
+		self.attack_times = sword.attack_times
+
+	def iterate(self):
+		if self.direction == DIRECTION_LEFT:
+			self.x = self.attacker.x + 3 - self.width
+			self.y = self.attacker.y + 45
+		elif self.direction == DIRECTION_RIGHT:
+			self.x = self.attacker.x + self.attacker.width
+			self.y = self.attacker.y + 45
+		hit_enemy = False
+		for potential_enemy in world.entities:
+			if isinstance(potential_enemy, Enemy) \
+					and potential_enemy.hitbox.colliderect(self.hitbox)\
+					and self.attack_times > 0:
+				potential_enemy.hp -= self.sword.damage
+				if potential_enemy.hp < 0:
+					potential_enemy.hp = 0
+				hit_enemy = True
+		if hit_enemy:
+			self.attack_times -= 1
+		if self.lasting_time > 0:
+			self.lasting_time -= 1
+		else:
+			self.hp = 0
+
+class PickaxeItem(Item):
+	def __init__(self, sprites, name, width, height, owner):
+		Item.__init__(self, sprites[0], name, width, height, owner)
+		self.use_frames = 15
+		self.sprites = sprites
+		
+	def use(self, use_direction):
+		pickaxe_entity = PickaxeEntity(self, self.owner, use_direction)
+		pickaxe_entity.affected_by_gravity = False
+		world.entities.append(pickaxe_entity)
+		
+class PickaxeEntity(ItemEntity):
+	def __init__(self, pickaxe, user, use_direction):
+		self.user = user
+		if use_direction == DIRECTION_LEFT:
+			ItemEntity.__init__(self, user.x - pickaxe.width, user.y + 3, \
+							 pickaxe.width, pickaxe.height, pickaxe.sprites[1], pickaxe)
+			self.lasting_time = pickaxe.use_frames
+		if use_direction == DIRECTION_RIGHT:
+			ItemEntity.__init__(self, user.x + user.width, user.y + 3, \
+							pickaxe.width, pickaxe.height, pickaxe.sprites[0], pickaxe)
+			self.lasting_time = pickaxe.use_frames
+		self.direction = use_direction
+	def iterate(self):
+		if self.direction == DIRECTION_LEFT:
+			self.x , self.y = self.user.x - self.width, self.user.y + 3
+		elif self.direction == DIRECTION_RIGHT:
+			self.x , self.y = self.user.x + self.user.width, self.user.y + 3
+		if self.lasting_time > 0:
+			self.lasting_time -= 1
+		else:
+			self.hp = 0
+
+class BlockItem(Item):
+	def __init__(self, sprite, name, owner, block_type):
+		Item.__init__(self, sprite, name, 20, 20, owner)
+		self.block_type = block_type
+
+	def place(self, map_grid_x, map_grid_y):
+		placed_block = Block(map_grid_x * 20, map_grid_y * 20, self.sprite, self.block_type)
+		world.map[map_grid_y][map_grid_x] = placed_block
+		self.number -= 1
+
+class Inventory():
+	def __init__(self, owner):
+		self.swords = []
+		self.swords.append(SwordItem(wooden_sword_sprites, "Wooden Sword", 63, 19, owner, 1))
+		self.current_sword = 0
+		self.pickaxes = []
+		self.pickaxes.append(PickaxeItem(wooden_pickaxe_sprites, "Wooden Pickaxe", 54, 54, owner))
+		self.current_pickaxe = 0
+		self.blocks = []
+		stone_blocks = BlockItem(block_sprites[6], "Stone Block", owner, 6)
+		stone_blocks.number = 100
+		self.blocks.append(stone_blocks)
+		self.current_block = 0
+		self.current_item = 0
 
 class Player(Entity):
 	def __init__(self, x, y, vx, vy, ax, ay, movement_sprites):
@@ -41,14 +179,21 @@ class Player(Entity):
 		self.movement_sprites = movement_sprites
 		self.movement_animation_index = 0
 		self.move_speed = 5
-		self.jump_speed = 17
+		self.jump_speed = 11
 		self.can_jump = True
 		self.width = 56
 		self.height = 94
 		self.max_hp = 100
 		self.hp = 100
+		self.use_item_time = 0
 		self.invincibility_frame = 0
 		self.max_invincibility_frame = 30
+		self.inventory = Inventory(self)
+		self.score = 0
+		self.healing_delay = 0
+		self.max_healing_delay = 300
+		self.healing_speed = 60
+		self.healing_timer = 1
 
 	def move(self, direction):
 		key_dict=pygame.key.get_pressed()
@@ -73,6 +218,20 @@ class Player(Entity):
 		if self.movement_animation_index > 19:
 			self.movement_animation_index = 0
 		self.sprite = self.movement_sprites[self.movement_animation_index // 4]
+
+	def strike_with_sword(self, direction):
+		if self.use_item_time <= 0 and self.can_use_again:
+			sword = self.inventory.swords[self.inventory.current_sword]
+			sword.attack(direction)
+			self.use_item_time = sword.use_frames
+			self.can_use_again = False
+
+	def dig_with_pickaxe(self, direction):
+		if self.use_item_time <= 0 and self.can_use_again:
+			pickaxe = self.inventory.pickaxes[self.inventory.current_pickaxe]
+			pickaxe.use(direction)
+			self.use_item_time = pickaxe.use_frames
+			self.can_use_again = True
 
 	def get_center_x(self):
 		return self.x + self.width // 2
@@ -107,27 +266,31 @@ class World():
 		self.current_chunk = []
 		self.entities = []
 		self.monster_count = 0
-		self.chosen_block = None
+		self.chosen_block = Block(0, 0, None, 0)
+		self.has_chosen_block = True
 		self.player_died = False
+
+	def get_clicked_distance_to_player(self):
+		return math.sqrt((pygame.mouse.get_pos()[0] + self.camera_x - self.player.get_center_x()) ** 2 \
+					 + (pygame.mouse.get_pos()[1] + self.camera_y - self.player.get_center_y()) ** 2)
 	# Updates the chosen_block attribute
 	def update_chosen_block(self):
-		if math.sqrt((pygame.mouse.get_pos()[0] + self.camera_x - self.player.get_center_x()) ** 2 \
-					 + (pygame.mouse.get_pos()[1] + self.camera_y - self.player.get_center_y()) ** 2) > 120:
-			self.chosen_block = None
+		if self.get_clicked_distance_to_player()> 120:
+			self.has_chosen_block = False
 			return
 		chosen_block_position_x = max(0, min(1999, (pygame.mouse.get_pos()[0] + self.camera_x) // 20))
 		chosen_block_position_y = max(0, min(299, (pygame.mouse.get_pos()[1] + self.camera_y) // 20))
 		self.chosen_block = self.map[int(chosen_block_position_y)][int(chosen_block_position_x)]
-		if self.chosen_block.block_type == 0:
-			self.chosen_block = None
+		self.has_chosen_block = True
+
 	def spawn_monster(self):
-		if random.random() < 0.1 and self.monster_count <= 10:
-			spawn_area = pygame.rect.Rect(random.randint(-800, -500) + self.player.x if random.random() < 0.5 \
-			else random.randint(500, 800) + self.player.x , \
-			self.player.y + random.randint(150, 210), 100, 100)
+		if random.random() < (0.005 * (2 / 3) ** self.monster_count) and self.monster_count <= 10:
+			spawn_area = pygame.rect.Rect(random.randint(-600, -300) + self.player.x if random.random() < 0.5 \
+			else random.randint(300, 600) + self.player.x , \
+			self.player.y - random.randint(150, 210), 100, 100)
 			able_to_spawn = True
-			for i in range(max(0, spawn_area.y // 20), min(300, spawn_area.y // 20 + 5)):
-				for j in range(max(0, spawn_area.x // 20), min(300,spawn_area.x // 20 + 5)):
+			for i in range(max(0, spawn_area.y // 20), min(299, spawn_area.y // 20 + 6)):
+				for j in range(max(0, spawn_area.x // 20), min(1999,spawn_area.x // 20 + 6)):
 					if self.map[i][j].hitbox.colliderect(spawn_area) and not self.map[i][j].can_pass_through:
 						able_to_spawn = False
 						break
@@ -138,7 +301,6 @@ class World():
 									0, 0, 0, skeleton_sprites, self.player)
 				self.entities.append(skeleton)
 				self.monster_count += 1
-				print("Enemy spawned! Current enemies: ", self.monster_count)
 
 	def despawn_monster(self):
 		for entity in self.entities:
@@ -149,11 +311,18 @@ class World():
 	def iterate_entities(self):
 		for entity in self.entities:
 			entity.iterate()
+			if entity.hp <= 0:
+				self.entities.remove(entity)
+				if isinstance(entity, Enemy):
+					self.monster_count -= 1
+					if isinstance(entity, Skeleton):
+						self.player.score += 5
+
 
 	def physical_engine(self):
 		# Gravity
 		if self.player.vy < 5:
-			self.player.ay = 0.5
+			self.player.ay = 0.7
 		else:
 			self.player.ay = 0
 		self.player.vx += self.player.ax
@@ -180,10 +349,11 @@ class World():
 		self.player.hitbox = pygame.rect.Rect((self.player.x, self.player.y), (self.player.width, self.player.height))
 		for i in range(0, len(self.entities)):
 			entity = self.entities[i]
-			if entity.vy < 5:
-				entity.ay = 0.5
-			else:
-				entity.ay = 0
+			if entity.affected_by_gravity:
+				if entity.vy < 5 :
+					entity.ay = 0.7
+				else:
+					entity.ay = 0
 			entity.vx += entity.ax
 			entity.vy += entity.ay
 			future_hitbox_x = pygame.rect.Rect((entity.x + entity.vx, entity.y),
@@ -208,9 +378,9 @@ class World():
 
 	def update_current_chunk(self):
 		self.current_chunk = []
-		for r in range(max(0, int(self.camera_y // 20 - 40)), min(299, int(self.camera_y // 20 + 40))):
+		for r in range(max(0, int(self.camera_y // 20 - 50)), min(299, int(self.camera_y // 20 + 50))):
 			current_row = []
-			for c in range(max(0, int(self.camera_x // 20 - 50)), min(1999, int(self.camera_x // 20 + 50))):
+			for c in range(max(0, int(self.camera_x // 20 - 70)), min(1999, int(self.camera_x // 20 + 70))):
 				current_row.append(self.map[r][c])
 			self.current_chunk.append(current_row)
 
@@ -225,27 +395,58 @@ class World():
 				if self.camera_x - block.width <= block.x <= self.camera_x + GAME_FRAME_WIDTH \
 					and self.camera_y - block.height <= block.y <= self.camera_y + GAME_FRAME_HEIGHT:
 					screen.blit(block.sprite, (block.x - self.camera_x, block.y - self.camera_y, block.width, block.height))
-		# If the position chosen is close enough to the center of player, show highlight
-		if self.chosen_block is not None and self.highlight_selected_block:
-			# Highlight selected block at the proper position
-				screen.blit(selected_block, (self.chosen_block.x - self.camera_x , self.chosen_block.y - self.camera_y, 20, 20))
+		if self.has_chosen_block:
+			# If the position chosen is close enough to the center of player, show highlight
+			if self.chosen_block.block_type != 0 and self.highlight_selected_block \
+				and self.player.inventory.current_item == 1:
+				# Highlight selected block at the proper position
+					screen.blit(selected_block, (self.chosen_block.x - self.camera_x , self.chosen_block.y - self.camera_y, 20, 20))
+			if self.chosen_block.block_type == 0 and self.highlight_selected_block \
+				and self.player.inventory.current_item == 2:
+				screen.blit(selected_block,
+							(self.chosen_block.x - self.camera_x, self.chosen_block.y - self.camera_y, 20, 20))
 		for entity in self.entities:
 			# If entity is in camera range
 			if self.camera_x - entity.width <= entity.x <= self.camera_x + GAME_FRAME_WIDTH \
 				and self.camera_y - entity.height <= entity.y <= self.camera_y + GAME_FRAME_HEIGHT:
+				if isinstance(entity, ItemEntity) and entity.item.owner.hp <= 0:
+					continue
 				screen.blit(entity.sprite, (entity.x - self.camera_x, entity.y - self.camera_y, entity.width, entity.height))
+				if isinstance(entity, Enemy):
+					health_percentage = entity.hp / entity.max_hp
+					pygame.draw.rect(screen, ((1 - health_percentage) * 255, health_percentage * 255, 60), pygame.rect.Rect(\
+					entity.x - self.camera_x - 22, entity.y - self.camera_y - 35, 100 * health_percentage, 15 ))
+
 		if self.player.invincibility_frame % 2 == 0:
 			screen.blit(self.player.sprite, (GAME_FRAME_WIDTH // 2 - self.player.width // 2, GAME_FRAME_HEIGHT // 2 - self.player.height // 2))
 		pygame.draw.rect(screen, (255, 0, 0), pygame.rect.Rect(GAME_FRAME_WIDTH - 200, 0, (self.player.hp / self.player.max_hp) * 200, 15))
-		if self.chosen_block is not None:
+		if self.chosen_block is not None and self.player.inventory.current_item == 1:
 			pygame.draw.rect(screen, (255, 255, 0), \
 			pygame.rect.Rect(self.player.get_center_x() - self.camera_x - 50, self.player.y - self.camera_y - 25, 100 - (self.chosen_block.hp / self.chosen_block.max_hp) * 100, 15))
+		# Draws the inventory
+		screen.blit(inventory_slot, (0, 0, 64, 64))
+		screen.blit(inventory_slot, (70, 0, 64, 64))
+		screen.blit(inventory_slot, (140, 0, 64, 64))
+		if self.player.inventory.current_item == 0:
+			screen.blit(highlighted_inventory_slot, (0, 0, 64, 64))
+		elif self.player.inventory.current_item == 1:
+			screen.blit(highlighted_inventory_slot, (70, 0, 64, 64))
+		elif self.player.inventory.current_item == 2:
+			screen.blit(highlighted_inventory_slot, (140, 0, 64, 64))
+		sword = self.player.inventory.swords[self.player.inventory.current_sword]
+		screen.blit(sword.sprite,(0 + 32 - sword.width // 2, 0 + 32 - sword.height // 2))
+		pickaxe = self.player.inventory.pickaxes[self.player.inventory.current_pickaxe]
+		screen.blit(pickaxe.sprite, (70 + 32 - pickaxe.width // 2, 0 + 32 - pickaxe.height // 2))
+		block = self.player.inventory.blocks[self.player.inventory.current_block]
+		screen.blit(block.sprite, (140 + 32 - block.width // 2, 0 + 32 - block.height // 2))
+		screen.blit(writing_font.render(str(block.number), True, [255, 255, 255] ), (140 + 64 - 25, 64 - 18, 25, 25))
+		screen.blit(writing_font.render("Your score: "+str(self.player.score), True, [255, 0, 0]), (GAME_FRAME_WIDTH // 2 - 40, 0, 75, 25))
 		pygame.display.flip()
 
 	def destroy_blocks(self):
 		# Determine whether the player's mouse is in reach of the player
 		# If selected block is too far, the block will not be destroyed
-		if self.chosen_block is None:
+		if not self.has_chosen_block:
 			return
 		if self.chosen_block.hp > 0:
 			if self.chosen_block.block_type == 1:
@@ -274,16 +475,86 @@ class World():
 			self.chosen_block.block_type = 0
 			self.chosen_block.sprite = block_sprites[0]
 			self.chosen_block.can_pass_through = True
+			self.chosen_block.hp = self.chosen_block.max_hp
+
+	def place_block(self):
+		current_block = self.player.inventory.blocks[self.player.inventory.current_block]
+		if self.chosen_block.block_type != 0 \
+				or current_block.number <= 0\
+				or self.chosen_block.hitbox.colliderect(self.player.hitbox)\
+				or self.player.use_item_time > 0\
+				or not self.has_chosen_block:
+			return
+		current_block.number -= 1
+		self.chosen_block.block_type = current_block.block_type
+		self.chosen_block.sprite = current_block.sprite
+		self.chosen_block.can_pass_through = False
+		self.player.use_item_time = 5
+
+	def save_map(self):
+		with open("map.mp","w") as map_file_write_stream:
+			for row in self.map:
+				for block in row:
+					map_file_write_stream.write(str(block.block_type)+" ")
+				map_file_write_stream.write("\n")
+
+	def handle_user_input(self):
+		key_dict = pygame.key.get_pressed()
+		if key_dict[pygame.K_ESCAPE]:
+			self.game_running = False
+			self.save_map()
+		if key_dict[pygame.K_SPACE]:
+			self.player.move(DIRECTION_UP)
+		if key_dict[pygame.K_d]:
+			self.player.move(DIRECTION_RIGHT)
+		if key_dict[pygame.K_a]:
+			self.player.move(DIRECTION_LEFT)
+		if not key_dict[pygame.K_d] and not key_dict[pygame.K_a]:
+			self.player.move(NO_DIRECTION_X)
+		if key_dict[pygame.K_1]:
+			self.player.inventory.current_item = 0
+		if key_dict[pygame.K_2]:
+			self.player.inventory.current_item = 1
+		if key_dict[pygame.K_3]:
+			self.player.inventory.current_item = 2
+
+		if pygame.mouse.get_pressed()[0] == 1:
+			if self.player.inventory.current_item == 0:
+				if pygame.mouse.get_pos()[0] <= GAME_FRAME_WIDTH // 2:
+					self.player.strike_with_sword(DIRECTION_LEFT)
+				else:
+					self.player.strike_with_sword(DIRECTION_RIGHT)
+			elif self.player.inventory.current_item == 1:
+				if pygame.mouse.get_pos()[0] <= GAME_FRAME_WIDTH // 2:
+					self.player.dig_with_pickaxe(DIRECTION_LEFT)
+				else:
+					self.player.dig_with_pickaxe(DIRECTION_RIGHT)
+				self.destroy_blocks()
+			elif self.player.inventory.current_item == 2:
+				self.place_block()
+		if pygame.mouse.get_pressed()[0] == 0:
+			self.player.can_use_again = True
+
+	def do_player_healing(self):
+		if self.player.healing_delay > 0:
+			self.player.healing_delay -= 1
+		else:
+			if self.player.healing_timer > 0:
+				self.player.healing_timer -= 1
+			else:
+				if self.player.hp < self.player.max_hp:
+					self.player.hp += 1
+				self.player.healing_timer = self.player.healing_speed
 
 	def message_display(self, text1, text2):
 		pygame.init()
-		font = pygame.font.SysFont("comicsansms", 70)
-		text1 = font.render(text1, True, (100, 0, 0))
-		font1 = pygame.font.SysFont("comicsansms", 35)
-		text2 = font1.render(text2, True, (100, 0, 0))
+		font = pygame.font.SysFont("Courier New", 70)
+		text1 = font.render(text1, True, (100,0,0))
+		font1 = pygame.font.SysFont("Courier New", 25)
+		text2 = font1.render(text2, True, (100,0,0))
 		screen.fill((255, 255, 255))
-		screen.blit(text1,(GAME_FRAME_WIDTH//2-120 , 100))
-		screen.blit(text2,(GAME_FRAME_WIDTH//2-300 , 400))
+		screen.blit(text1, (GAME_FRAME_WIDTH//2-140, 100))
+		screen.blit(text2, (GAME_FRAME_WIDTH//2-300, 400))
 
 	def main_loop(self):
 		in_Game = False
@@ -292,36 +563,27 @@ class World():
 				for event in pygame.event.get():
 					if event.type == pygame.QUIT:
 						self.game_running = False
+						self.save_map()
 				if not self.player_died:
 					if self.player.hp <= 0:
 						self.player_died = True
-						in_Game=False
-					key_dict = pygame.key.get_pressed()
-					if key_dict[pygame.K_ESCAPE]:
-						self.game_running = False
-					if key_dict[pygame.K_SPACE]:
-						self.player.move(DIRECTION_UP)
-					if key_dict[pygame.K_d]:
-						self.player.move(DIRECTION_RIGHT)
-					if key_dict[pygame.K_a]:
-						self.player.move(DIRECTION_LEFT)
-					if not key_dict[pygame.K_d] and not key_dict[pygame.K_a]:
-						self.player.move(NO_DIRECTION_X)
+						in_Game = False
+					self.update_chosen_block()
+					self.handle_user_input()
 					if self.player.invincibility_frame > 0:
 						self.player.invincibility_frame -= 1
-					self.update_chosen_block()
+					if self.player.use_item_time > 0:
+						self.player.use_item_time -= 1
 					self.spawn_monster()
 					self.despawn_monster()
-					self.iterate_entities()
 					self.physical_engine()
-					if pygame.mouse.get_pressed() == (1, 0, 0) or pygame.mouse.get_pressed() == (1, 0, 1) or \
-						pygame.mouse.get_pressed() == (1, 1, 0) or pygame.mouse.get_pressed() == (1, 1, 1):
-						self.destroy_blocks()
+					self.do_player_healing()
+					self.iterate_entities()
 					self.update_current_chunk()
 					self.render_frame()
 					self.clock.tick(FRAMES_PER_SECOND)
-			if in_Game==False:
-				self.message_display("Survive", "Press space to play.  Press ESC to quit.")
+			if in_Game == False:
+				self.message_display("Survive", "Press space to play.   Press ESC to quit.")
 				for event in pygame.event.get():
 					if event.type == pygame.QUIT:
 						self.game_running = False
@@ -329,11 +591,14 @@ class World():
 				if key_dict[pygame.K_ESCAPE]:
 					self.game_running = False
 				if key_dict[pygame.K_SPACE]:
-					in_Game=True
-					self.player_died=False
+					in_Game = True
+					self.player_died = False
 					self.player.hp=100
 					self.entities.clear()
 					self.monster_count=0
+					self.score=0
 				pygame.display.flip()
+
 world = World()
 world.main_loop()
+
