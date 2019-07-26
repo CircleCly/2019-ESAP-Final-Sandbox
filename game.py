@@ -64,7 +64,7 @@ class SwordItem(Item):
 	def __init__(self, sprites, name, width, height, owner, attack_times):
 		Item.__init__(self, sprites[0], name, width, height, owner)
 		self.number = 1
-		self.damage = 3
+		#self.damage = 3
 		self.width = width
 		self.use_frames = 15
 		self.height = height
@@ -92,7 +92,7 @@ class SwordEntity(ItemEntity):
 		self.sword = sword
 		self.attack_times = sword.attack_times
 
-	def iterate(self):
+	def iterate(self, damage):
 		if self.direction == DIRECTION_LEFT:
 			self.x = self.attacker.x + 3 - self.width
 			self.y = self.attacker.y + 45
@@ -104,7 +104,7 @@ class SwordEntity(ItemEntity):
 			if isinstance(potential_enemy, Enemy) \
 					and potential_enemy.hitbox.colliderect(self.hitbox)\
 					and self.attack_times > 0:
-				potential_enemy.hp -= self.sword.damage
+				potential_enemy.hp -= damage
 				if potential_enemy.hp < 0:
 					potential_enemy.hp = 0
 				hit_enemy = True
@@ -138,7 +138,7 @@ class PickaxeEntity(ItemEntity):
 							pickaxe.width, pickaxe.height, pickaxe.sprites[0], pickaxe)
 			self.lasting_time = pickaxe.use_frames
 		self.direction = use_direction
-	def iterate(self):
+	def iterate(self, damage):
 		if self.direction == DIRECTION_LEFT:
 			self.x , self.y = self.user.x - self.width, self.user.y + 3
 		elif self.direction == DIRECTION_RIGHT:
@@ -249,6 +249,7 @@ class World():
 		self.camera_y = self.player.y - GAME_FRAME_HEIGHT / 2
 		self.map = []
 		self.highlight_selected_block = True
+		self.damage = 3
 		for row in range(0, 300):
 			line = map_file.readline()
 			line = line.split(" ")
@@ -310,7 +311,7 @@ class World():
 
 	def iterate_entities(self):
 		for entity in self.entities:
-			entity.iterate()
+			entity.iterate(self.damage)
 			if entity.hp <= 0:
 				self.entities.remove(entity)
 				if isinstance(entity, Enemy):
@@ -472,6 +473,14 @@ class World():
 			elif self.chosen_block.block_type == 11:
 				self.chosen_block.hp -= 35
 		if self.chosen_block.hp <= 0:
+			if self.chosen_block.block_type == 7:
+				self.damage+=1
+			elif self.chosen_block.block_type == 8:
+				self.damage+=2
+			elif self.chosen_block.block_type == 9:
+				self.damage+=3
+			elif self.chosen_block.block_type == 10:
+				self.damage+=4
 			self.chosen_block.block_type = 0
 			self.chosen_block.sprite = block_sprites[0]
 			self.chosen_block.can_pass_through = True
@@ -567,6 +576,10 @@ class World():
 				if not self.player_died:
 					if self.player.hp <= 0:
 						self.player_died = True
+						self.player.score = 0
+						self.player.hp=100
+						self.entities.clear()
+						self.monster_count=0
 						in_Game = False
 					self.update_chosen_block()
 					self.handle_user_input()
@@ -596,7 +609,7 @@ class World():
 					self.player.hp=100
 					self.entities.clear()
 					self.monster_count=0
-					self.score=0
+					self.player.score=0
 				pygame.display.flip()
 
 world = World()
