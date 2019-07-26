@@ -1,7 +1,6 @@
 import pygame
 import random
-from block import *
-from entities import *
+import math
 
 #Game Constant
 DIRECTION_UP = 0
@@ -9,8 +8,8 @@ DIRECTION_RIGHT = 1
 DIRECTION_DOWN = 2
 DIRECTION_LEFT = 3
 NO_DIRECTION_X = 4
-PLAYER_INIT_X = 800
-PLAYER_INIT_Y = 2900
+PLAYER_INIT_X = 20000
+PLAYER_INIT_Y = 2700
 FRAMES_PER_SECOND = 60
 GAME_FRAME_WIDTH = 800
 GAME_FRAME_HEIGHT = 600
@@ -44,6 +43,29 @@ wooden_pickaxe_sprites.append(pygame.image.load('wooden_pickaxe_right.png'))
 wooden_pickaxe_sprites.append(pygame.image.load('wooden_pickaxe_left.png'))
 inventory_slot = pygame.image.load('inventory_slot.png')
 highlighted_inventory_slot = pygame.image.load('highlighted_inventory_slot.png')
+arrow_left = pygame.image.load('arrow_left.png')
+arrow_right = pygame.image.load('arrow_right.png')
+wooden_bow_sprites = []
+wooden_bow_sprites.append(pygame.image.load('wooden_bow_left.png'))
+wooden_bow_sprites.append(pygame.image.load('wooden_bow_right.png'))
+dynamite_monster_sprites = []
+dynamite_monster_sprites.append(pygame.image.load('dynamite_monster.png'))
+explosion = pygame.image.load('explosion.png')
+class Entity(pygame.sprite.Sprite):
+	def __init__(self, x, y, vx, vy, ax, ay, width, height, sprite):
+		self.x = x
+		self.y = y
+		self.vx = vx
+		self.vy = vy
+		self.ax = ax
+		self.ay = ay
+		self.sprite = sprite
+		self.width = width
+		self.height = height
+		self.hitbox = pygame.rect.Rect((x, y), (self.width, self.height))
+		self.affected_by_gravity = True
+		self.hp = 1
+		self.max_hp = 1
 
 class Item():
 	def __init__(self, sprite, name, width, height, owner):
@@ -59,18 +81,92 @@ class ItemEntity(Entity):
 	def __init__(self, x, y, width, height, sprite, item):
 		self.item = item
 		Entity.__init__(self, x, y, 0, 0, 0, 0, width, height, sprite)
+		
+class BowItem(Item):
+	def __init__(self, sprites, name, width, height, owner):
+		Item.__init__(self, sprites[0], name, width, height, owner)
+		self.number = 1
+		self.damage = 3
+		self.use_frames = 15
+		self.sprites = sprites
+		
+	def attack(self, direction):
+		bow_entity = BowEntity(self, self.owner, direction)
+		bow_entity.affected_by_gravity = False
+		world.entities.append(bow_entity)
+		if direction == DIRECTION_RIGHT:
+			arrow = Arrow(bow_entity.x + bow_entity.width, \
+						  bow_entity.y + bow_entity.height // 2, 27, self.damage + self.owner.damage_bonus)
+			arrow.affected_by_gravity = False
+			world.entities.append(arrow)
+		elif direction == DIRECTION_LEFT:
+			arrow = Arrow(bow_entity.x, bow_entity.y + bow_entity.height // 2,\
+						  -27 , self.damage + self.owner.damage_bonus)
+			arrow.affected_by_gravity = False
+			world.entities.append(arrow)
+
+class BowEntity(ItemEntity):
+	def __init__(self, bow, attacker, attack_direction):
+		self.attacker = attacker
+		if attack_direction == DIRECTION_LEFT:
+			ItemEntity.__init__(self, attacker.x  - bow.width, attacker.y + 25, \
+								bow.width, bow.height, bow.sprites[0], bow)
+			self.direction = DIRECTION_LEFT
+			self.lasting_time = bow.use_frames
+		elif attack_direction == DIRECTION_RIGHT:
+			ItemEntity.__init__(self, attacker.x + attacker.width, attacker.y + 25, \
+								bow.width, bow.height, bow.sprites[1], bow)
+			self.direction = DIRECTION_RIGHT
+			self.lasting_time = bow.use_frames
+		self.bow = bow
+		self.attack_direction = attack_direction
+
+	def iterate(self):
+		if self.attack_direction == DIRECTION_LEFT:
+			self.x , self.y = self.attacker.x  - self.bow.width, self.attacker.y + 25
+		elif self.attack_direction == DIRECTION_RIGHT:
+			self.x , self.y = self.attacker.x + self.attacker.width, self.attacker.y + 25
+		if self.lasting_time > 0:
+			self.lasting_time -= 1
+		else:
+			self.hp = 0
+
+class Arrow(Entity):
+	def __init__(self, x, y, speed, damage):
+		self.lasting_time = 600
+		Entity.__init__(self, x, y, speed, 0, 0, 0, 61, 18, arrow_right)
+		if speed < 0:
+			self.sprite = arrow_left
+		else:
+			self.sprite = arrow_right
+		self.vx = speed
+		self.damage = damage
+	def iterate(self):
+
+		for row in world.current_chunk:
+			for block in row:
+				if self.hitbox.colliderect(block.hitbox) and not block.can_pass_through:
+					self.hp = 0
+		for entity in world.entities:
+			if isinstance(entity, Enemy) and self.hitbox.colliderect(entity.hitbox):
+				entity.hp -= self.damage
+				self.hp = 0
+				if entity.hp < 0:
+					entity.hp = 0
+		if self.lasting_time > 0:
+			self.lasting_time -= 1
+		else:
+			self.hp = 0
 
 class SwordItem(Item):
 	def __init__(self, sprites, name, width, height, owner, attack_times):
 		Item.__init__(self, sprites[0], name, width, height, owner)
 		self.number = 1
-		#self.damage = 3
-		self.width = width
+		self.damage = 6
 		self.use_frames = 15
-		self.height = height
-		self.owner = owner
 		self.sprites = sprites
 		self.attack_times = attack_times
+
 	def attack(self, attack_direction):
 		sword_entity = SwordEntity(self, self.owner, attack_direction)
 		sword_entity.affected_by_gravity = False
@@ -92,7 +188,7 @@ class SwordEntity(ItemEntity):
 		self.sword = sword
 		self.attack_times = sword.attack_times
 
-	def iterate(self, damage):
+	def iterate(self):
 		if self.direction == DIRECTION_LEFT:
 			self.x = self.attacker.x + 3 - self.width
 			self.y = self.attacker.y + 45
@@ -104,7 +200,7 @@ class SwordEntity(ItemEntity):
 			if isinstance(potential_enemy, Enemy) \
 					and potential_enemy.hitbox.colliderect(self.hitbox)\
 					and self.attack_times > 0:
-				potential_enemy.hp -= damage
+				potential_enemy.hp -= self.sword.damage + self.attacker.damage_bonus
 				if potential_enemy.hp < 0:
 					potential_enemy.hp = 0
 				hit_enemy = True
@@ -138,7 +234,7 @@ class PickaxeEntity(ItemEntity):
 							pickaxe.width, pickaxe.height, pickaxe.sprites[0], pickaxe)
 			self.lasting_time = pickaxe.use_frames
 		self.direction = use_direction
-	def iterate(self, damage):
+	def iterate(self):
 		if self.direction == DIRECTION_LEFT:
 			self.x , self.y = self.user.x - self.width, self.user.y + 3
 		elif self.direction == DIRECTION_RIGHT:
@@ -171,8 +267,11 @@ class Inventory():
 		stone_blocks.number = 100
 		self.blocks.append(stone_blocks)
 		self.current_block = 0
+		self.bows = []
+		self.current_bow = 0
+		wooden_bow = BowItem(wooden_bow_sprites, "Wooden Bow", 12, 56, owner)
+		self.bows.append(wooden_bow)
 		self.current_item = 0
-
 class Player(Entity):
 	def __init__(self, x, y, vx, vy, ax, ay, movement_sprites):
 		Entity.__init__(self, x, y, vx, vy, ax, ay, 56, 94, movement_sprites[0])
@@ -194,6 +293,7 @@ class Player(Entity):
 		self.max_healing_delay = 300
 		self.healing_speed = 60
 		self.healing_timer = 1
+		self.damage_bonus = 0
 
 	def move(self, direction):
 		key_dict=pygame.key.get_pressed()
@@ -232,7 +332,12 @@ class Player(Entity):
 			pickaxe.use(direction)
 			self.use_item_time = pickaxe.use_frames
 			self.can_use_again = True
-
+	def shoot_with_bow(self, direction):
+		if self.use_item_time <= 0 and self.can_use_again:
+			bow = self.inventory.bows[self.inventory.current_pickaxe]
+			bow.attack(direction)
+			self.use_item_time = bow.use_frames
+			self.can_use_again = True
 	def get_center_x(self):
 		return self.x + self.width // 2
 
@@ -249,7 +354,6 @@ class World():
 		self.camera_y = self.player.y - GAME_FRAME_HEIGHT / 2
 		self.map = []
 		self.highlight_selected_block = True
-		self.damage = 3
 		for row in range(0, 300):
 			line = map_file.readline()
 			line = line.split(" ")
@@ -302,6 +406,23 @@ class World():
 									0, 0, 0, skeleton_sprites, self.player)
 				self.entities.append(skeleton)
 				self.monster_count += 1
+		if random.random() < 0.002 * (3 / 4) ** self.monster_count and self.monster_count <= 10:
+			spawn_area = pygame.rect.Rect(random.randint(-600, -300) + self.player.x if random.random() < 0.5 \
+											  else random.randint(300, 600) + self.player.x, \
+										  self.player.y - random.randint(150, 210), 100, 100)
+			able_to_spawn = True
+			for i in range(max(0, spawn_area.y // 20), min(299, spawn_area.y // 20 + 6)):
+				for j in range(max(0, spawn_area.x // 20), min(1999, spawn_area.x // 20 + 6)):
+					if self.map[i][j].hitbox.colliderect(spawn_area) and not self.map[i][j].can_pass_through:
+						able_to_spawn = False
+						break
+				if not able_to_spawn:
+					break
+			if able_to_spawn:
+				dynamite_monster = DynamiteMonster(spawn_area.x, spawn_area.y, \
+												   0, 0, 0, 0, dynamite_monster_sprites, self.player)
+				self.entities.append(dynamite_monster)
+				self.monster_count += 1
 
 	def despawn_monster(self):
 		for entity in self.entities:
@@ -311,7 +432,7 @@ class World():
 
 	def iterate_entities(self):
 		for entity in self.entities:
-			entity.iterate(self.damage)
+			entity.iterate()
 			if entity.hp <= 0:
 				self.entities.remove(entity)
 				if isinstance(entity, Enemy):
@@ -370,9 +491,13 @@ class World():
 					if future_hitbox_y.colliderect(block.hitbox) and not block.can_pass_through:
 						will_collide_y = True
 			entity.can_jump = will_collide_y
-			if not will_collide_x:
+			if not isinstance(entity, Arrow):
+				if not will_collide_x:
+					entity.x += entity.vx
+				if not will_collide_y:
+					entity.y += entity.vy
+			else:
 				entity.x += entity.vx
-			if not will_collide_y:
 				entity.y += entity.vy
 			entity.hitbox = pygame.rect.Rect((entity.x, entity.y),
 											(entity.width, entity.height))
@@ -417,7 +542,9 @@ class World():
 					health_percentage = entity.hp / entity.max_hp
 					pygame.draw.rect(screen, ((1 - health_percentage) * 255, health_percentage * 255, 60), pygame.rect.Rect(\
 					entity.x - self.camera_x - 22, entity.y - self.camera_y - 35, 100 * health_percentage, 15 ))
-
+					if isinstance(entity, DynamiteMonster) and entity.activated:
+						screen.blit(writing_font.render(str(entity.explosion_timer // 60 + 1), True, [255, 0, 0]),
+									(entity.x + 15 - self.camera_x, entity.y - 65 - self.camera_y, 50, 25))
 		if self.player.invincibility_frame % 2 == 0:
 			screen.blit(self.player.sprite, (GAME_FRAME_WIDTH // 2 - self.player.width // 2, GAME_FRAME_HEIGHT // 2 - self.player.height // 2))
 		pygame.draw.rect(screen, (255, 0, 0), pygame.rect.Rect(GAME_FRAME_WIDTH - 200, 0, (self.player.hp / self.player.max_hp) * 200, 15))
@@ -428,12 +555,15 @@ class World():
 		screen.blit(inventory_slot, (0, 0, 64, 64))
 		screen.blit(inventory_slot, (70, 0, 64, 64))
 		screen.blit(inventory_slot, (140, 0, 64, 64))
+		screen.blit(inventory_slot, (210, 0, 64, 64))
 		if self.player.inventory.current_item == 0:
 			screen.blit(highlighted_inventory_slot, (0, 0, 64, 64))
 		elif self.player.inventory.current_item == 1:
 			screen.blit(highlighted_inventory_slot, (70, 0, 64, 64))
 		elif self.player.inventory.current_item == 2:
 			screen.blit(highlighted_inventory_slot, (140, 0, 64, 64))
+		elif self.player.inventory.current_item == 3:
+			screen.blit(highlighted_inventory_slot, (210, 0, 64, 64))
 		sword = self.player.inventory.swords[self.player.inventory.current_sword]
 		screen.blit(sword.sprite,(0 + 32 - sword.width // 2, 0 + 32 - sword.height // 2))
 		pickaxe = self.player.inventory.pickaxes[self.player.inventory.current_pickaxe]
@@ -441,6 +571,8 @@ class World():
 		block = self.player.inventory.blocks[self.player.inventory.current_block]
 		screen.blit(block.sprite, (140 + 32 - block.width // 2, 0 + 32 - block.height // 2))
 		screen.blit(writing_font.render(str(block.number), True, [255, 255, 255] ), (140 + 64 - 25, 64 - 18, 25, 25))
+		bow = self.player.inventory.bows[self.player.inventory.current_bow]
+		screen.blit(bow.sprite, (210 + 32 - bow.width // 2, 0 + 32 - bow.height // 2))
 		screen.blit(writing_font.render("Your score: "+str(self.player.score), True, [255, 0, 0]), (GAME_FRAME_WIDTH // 2 - 40, 0, 75, 25))
 		pygame.display.flip()
 
@@ -474,13 +606,13 @@ class World():
 				self.chosen_block.hp -= 35
 		if self.chosen_block.hp <= 0:
 			if self.chosen_block.block_type == 7:
-				self.damage+=1
+				self.player.damage_bonus += 1
 			elif self.chosen_block.block_type == 8:
-				self.damage+=2
+				self.player.damage_bonus += 2
 			elif self.chosen_block.block_type == 9:
-				self.damage+=3
+				self.player.damage_bonus += 3
 			elif self.chosen_block.block_type == 10:
-				self.damage+=4
+				self.player.damage_bonus += 4
 			self.chosen_block.block_type = 0
 			self.chosen_block.sprite = block_sprites[0]
 			self.chosen_block.can_pass_through = True
@@ -526,7 +658,8 @@ class World():
 			self.player.inventory.current_item = 1
 		if key_dict[pygame.K_3]:
 			self.player.inventory.current_item = 2
-
+		if key_dict[pygame.K_4]:
+			self.player.inventory.current_item = 3
 		if pygame.mouse.get_pressed()[0] == 1:
 			if self.player.inventory.current_item == 0:
 				if pygame.mouse.get_pos()[0] <= GAME_FRAME_WIDTH // 2:
@@ -541,6 +674,11 @@ class World():
 				self.destroy_blocks()
 			elif self.player.inventory.current_item == 2:
 				self.place_block()
+			elif self.player.inventory.current_item == 3:
+				if pygame.mouse.get_pos()[0] <= GAME_FRAME_WIDTH // 2:
+					self.player.shoot_with_bow(DIRECTION_LEFT)
+				else:
+					self.player.shoot_with_bow(DIRECTION_RIGHT)
 		if pygame.mouse.get_pressed()[0] == 0:
 			self.player.can_use_again = True
 
@@ -576,10 +714,6 @@ class World():
 				if not self.player_died:
 					if self.player.hp <= 0:
 						self.player_died = True
-						self.player.score = 0
-						self.player.hp=100
-						self.entities.clear()
-						self.monster_count=0
 						in_Game = False
 					self.update_chosen_block()
 					self.handle_user_input()
@@ -607,10 +741,157 @@ class World():
 					in_Game = True
 					self.player_died = False
 					self.player.hp=100
+					self.player.x = PLAYER_INIT_X
+					self.player.y = PLAYER_INIT_Y
+					self.player.damage_bonus = 0
 					self.entities.clear()
 					self.monster_count=0
-					self.player.score=0
+					self.score=0
 				pygame.display.flip()
+
+
+class Enemy(Entity):
+	def __init__(self, x, y, vx, vy, ax, ay, width, height, sprites, target):
+		self.target = target
+		self.sprites = sprites
+		Entity.__init__(self, x, y, vx, vy, ax, ay, width, height, sprites[0])
+
+
+class DynamiteMonster(Enemy):
+	def __init__(self, x, y, vx, vy, ax, ay, sprites, target):
+		Enemy.__init__(self, x, y, vx, vy, ax, ay, 56, 94, sprites, target)
+		self.target = target
+		self.move_speed = 2
+		self.jump_speed = 7
+		self.can_jump = True
+		self.max_hp = 22
+		self.hp = 22
+		self.explosion_timer = 180
+		self.activated = False
+
+	def approach_target(self):
+		if math.sqrt((self.target.x - self.x) ** 2 + (self.target.y - self.y) ** 2) > 900:
+			self.vx = 0
+			return
+		if self.target.x > self.x:
+			self.vx = self.move_speed
+		elif self.target.x < self.x:
+			self.vx = -self.move_speed
+		if self.target.y < self.y:
+			if self.can_jump:
+				self.vy = -self.jump_speed
+				self.can_jump = False
+
+	def check_activate(self):
+		if math.sqrt((self.target.x - self.x) ** 2 + (self.target.y - self.y) ** 2) < 140:
+			self.activated = True
+
+	def explode(self):
+		self.hp = 0
+		world.entities.append(Explosion(self.x + self.width // 2 - 80, self.y + self.height // 2 - 80,
+										160, 160, 5, explosion))
+
+	def iterate(self):
+		self.approach_target()
+		self.check_activate()
+		if self.activated and self.explosion_timer > 0:
+			self.explosion_timer -= 1
+		if self.activated and self.explosion_timer <= 0:
+			self.explode()
+
+
+class Explosion(Entity):
+	def __init__(self, x, y, width, height, lasting_time, sprite):
+		Entity.__init__(self, x, y, 0, 0, 0, 0, width, height, sprite)
+		self.lasting_time = lasting_time
+
+	def iterate(self):
+		for row in world.current_chunk:
+			for block in row:
+				if block.hitbox.colliderect(self.hitbox):
+					block.block_type = 0
+					block.sprite = block_sprites[0]
+					block.can_pass_through = True
+					block.hp = block.max_hp
+		if world.player.hitbox.colliderect(self.hitbox) and world.player.invincibility_frame <= 0:
+			world.player.hp -= 20
+			if world.player.hp < 0:
+				world.player.hp = 0
+		for entity in world.entities:
+			if entity.hitbox.colliderect(self.hitbox) and not isinstance(entity, DynamiteMonster) and not isinstance(entity, Explosion):
+				entity.hp -= 20
+				if entity.hp < 0:
+					entity.hp = 0
+		if self.lasting_time > 0:
+			self.lasting_time -= 1
+		else:
+			self.hp = 0
+
+
+class Skeleton(Enemy):
+	def __init__(self, x, y, vx, vy, ax, ay, sprites, target):
+		Enemy.__init__(self, x, y, vx, vy, ax, ay, 56, 94, sprites, target)
+		self.target = target
+		self.move_speed = 5
+		self.jump_speed = 8
+		self.can_jump = True
+		self.movement_sprites = sprites
+		self.movement_animation_index = 0
+		self.attack_damage = 10
+		self.attack_knockback_x = 0
+		self.attack_knockback_y = 0
+		self.max_hp = 30
+		self.hp = 30
+
+	def approach_target(self):
+		if math.sqrt((self.target.x - self.x) ** 2 + (self.target.y - self.y) ** 2) > 900:
+			self.vx = 0
+			return
+		if self.target.x > self.x:
+			self.vx = self.move_speed
+			self.movement_animation_index += 1
+		elif self.target.x < self.x:
+			self.vx = -self.move_speed
+			self.movement_animation_index += 1
+		if self.target.y < self.y:
+			if self.can_jump:
+				self.vy = -self.jump_speed
+				self.can_jump = False
+		if self.movement_animation_index > 15:
+			self.movement_animation_index = 0
+		self.sprite = self.movement_sprites[self.movement_animation_index // 4]
+
+	def attack_target(self):
+		if 0 <= self.x - self.target.x < 40 and abs(self.y - self.target.y) < 40:
+			self.movement_animation_index = 16
+			self.sprite = self.movement_sprites[4]
+		elif 0 <= self.target.x - self.x < 40 and abs(self.y - self.target.y) < 40:
+			self.movement_animation_index = 17
+			self.sprite = self.movement_sprites[5]
+		if self.target.hitbox.colliderect(self.hitbox) and self.target.invincibility_frame == 0:
+			self.target.hp -= self.attack_damage
+			self.target.invincibility_frame = self.target.max_invincibility_frame
+			self.target.healing_delay = self.target.max_healing_delay
+			self.target.healing_timer = self.target.healing_speed
+			self.target.vx = -self.attack_knockback_x
+			self.target.vy = -self.attack_knockback_y
+
+	def iterate(self):
+		self.approach_target()
+		self.attack_target()
+
+class Block(pygame.sprite.Sprite):
+    def __init__(self, x, y, sprite, block_type):
+        self.x = x
+        self.y = y
+        self.width = 20
+        self.height = 20
+        self.sprite = sprite
+        self.block_type = block_type
+        self.hitbox = pygame.rect.Rect((x, y), (self.width, self.height))
+        self.can_pass_through = False
+        self.hp = 1000
+        self.max_hp = 1000
 
 world = World()
 world.main_loop()
