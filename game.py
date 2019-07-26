@@ -458,6 +458,10 @@ class World():
 					self.monster_count -= 1
 					if isinstance(entity, Skeleton):
 						self.player.score += 5
+					if isinstance(entity, LavaMonster):
+						self.player.score += 15
+					if isinstance(entity, DynamiteMonster):
+						self.player.score += 3
 
 
 	def physical_engine(self):
@@ -651,7 +655,7 @@ class World():
 		self.chosen_block.block_type = current_block.block_type
 		self.chosen_block.sprite = current_block.sprite
 		self.chosen_block.can_pass_through = False
-		self.player.use_item_time = 5
+		self.player.use_item_time = 30
 
 	def save_map(self):
 		with open("map.mp","w") as map_file_write_stream:
