@@ -11,4 +11,4 @@ One should use "python Game.py" to run the game.
 # Run the map generator first before running the game.
 
 # Game Preview
-![image](https://github.com/ARCircle1502/2019-ESAP-Final-Sandbox/tree/master/previews/preview.png)
+![image](https://github.com/ARCircle1502/2019-ESAP-Final-Sandbox/blob/master/previews/preview.png)
